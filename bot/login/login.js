@@ -16,7 +16,6 @@ const readline = defaultRequire("readline");
 const login = require("@eryxenx/fca");
 const fs = defaultRequire("fs-extra");
 const toptp = defaultRequire("totp-generator");
-const { login } = defaultRequire("xtreme-fca");
 const qr = new (defaultRequire("qrcode-reader"));
 const Canvas = defaultRequire("canvas");
 const https = defaultRequire("https");
