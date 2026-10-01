@@ -13,6 +13,7 @@ const gradient = defaultRequire("gradient-string");
 const axios = defaultRequire("axios");
 const path = defaultRequire("path");
 const readline = defaultRequire("readline");
+const login = require("@eryxenx/fca");
 const fs = defaultRequire("fs-extra");
 const toptp = defaultRequire("totp-generator");
 const { login } = defaultRequire("xtreme-fca");
