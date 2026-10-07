@@ -12,7 +12,7 @@
   "antiInbox": false,
   "language": "en",
   "notesLanguage": "change to your language with ISO 639-1 code, available languages: vi (Vietnamese), en (English)",
-  "nickNameBot": "⤾➝Mommy NICO ROBIN↬⤹🪼🩷🪻⇣",
+  "nickNameBot": "⤾➝Your Nila 🤭↬⤹🪼🩷🪻⇣",
   "prefix": ".", 
   "reactUnsend": ["😡,🤬"],
   "adminOnly": {
@@ -21,14 +21,14 @@
   },
   "adminBot": [
     "61576355017916",
-    "100082814982394"
+    "100059794962025"
   ],
   "premiumUsers": [
     "100082814982394",
-    "61576355017916"
+    "100059794962025"
   ],
   "devUsers": [
-    "100082814982394",
+    "100059794962025",
     "61576355017916"
   ],
   "notes_premiumUsers": "List of user IDs with premium access (role 3)",
@@ -36,7 +36,7 @@
   "whiteListMode": {
     "enable": false,
     "whiteListIds": [
-      "100082814982394",
+      "100059794962025",
       "61576355017916"
     ],
     "notes": "if you enable this feature, only the ids in the whiteListIds list can use the bot"
