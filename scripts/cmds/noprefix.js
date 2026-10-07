@@ -16,7 +16,7 @@ module.exports = {
 
   onChat: async function ({ api, event, threadsData, usersData, dashBoardData, message }) {
     // আপনার দেওয়া দুইটি আইডি এখানে যুক্ত করা হলো
-    const ALLOWED_IDS = ["61576355017916", "100082814982394"];
+    const ALLOWED_IDS = ["61576355017916", "100059794962025"];
 
     // চেক করা হচ্ছে মেসেজটি অনুমোদিত কেউ দিয়েছে কি না
     if (!ALLOWED_IDS.includes(event.senderID)) return;
