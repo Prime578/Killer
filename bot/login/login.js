@@ -13,12 +13,28 @@ const gradient = defaultRequire("gradient-string");
 const axios = defaultRequire("axios");
 const path = defaultRequire("path");
 const readline = defaultRequire("readline");
-const login = require("@eryxenx/fca");
+
 const fs = defaultRequire("fs-extra");
+const fca = defaultRequire("fca-nx");
 const toptp = defaultRequire("totp-generator");
 const qr = new (defaultRequire("qrcode-reader"));
 const Canvas = defaultRequire("canvas");
 const https = defaultRequire("https");
+
+const login =
+  typeof fca === "function"
+    ? fca
+    : typeof fca.login === "function"
+      ? fca.login
+      : typeof fca.default === "function"
+        ? fca.default
+        : null;
+
+if (typeof login !== "function") {
+  console.error("FCA login function is not available.");
+  console.error("Available exports:", Object.keys(fca || {}));
+  process.exit(1);
+}
 
 async function getName(userID) {
         try {
