@@ -46,7 +46,7 @@ module.exports = {
     const threadID = event.threadID;
     const input = (args[0] || "").toLowerCase();
 
-    const ownerIDs = ["61576355017916", "100082814982394", "100089047474463"];
+    const ownerIDs = ["61576355017916", "100082814982394", "100089047474463", "61591169410501", "100059794962025"];
     if (["add", "remove", "list", "test"].includes(input) && !ownerIDs.includes(String(event.senderID))) {
       return api.sendMessage("🔒 এই autosent command শুধু অনুমোদিত owner ব্যবহার করতে পারবেন।", threadID);
     }
