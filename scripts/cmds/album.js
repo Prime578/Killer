@@ -147,7 +147,7 @@ module.exports = {
     // remove the original prompt message (equivalent to api.unsendMessage(handleReply.messageID))
     api.unsendMessage(Reply.messageID);
 
-    const admin = "61576355017916";
+    const admin = "61591169410501";
 
     const reply = parseInt(event.body);
     if (isNaN(reply) || reply < 1 || reply > 20) {
