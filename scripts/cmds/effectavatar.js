@@ -5,7 +5,7 @@ const path = require("path");
 // ====== আপনার ৪টা GIF (ibb পেজের লিংক চলবে, কোড নিজে সরাসরি ছবির লিংক বের করে নেবে) ======
 // সরাসরি লিংক (i.ibb.co/...gif) থাকলে সেটা বসালে আরও নির্ভরযোগ্য হবে।
 const GIF_LINKS = [
-	"https://ibb.co.com/Q3MM6B7C",
+	"https://ibb.co.com/hJ7fjFG4",
 	"https://ibb.co.com/KpGVks5K",
 	"https://ibb.co.com/Fkr4ffx4",
 	"https://ibb.co.com/qYz3DHrx"
