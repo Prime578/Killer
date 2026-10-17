@@ -10,6 +10,7 @@ const GIF_LINKS = [
 	"https://ibb.co.com/Fkr4ffx4",
 	"https://ibb.co.com/qYz3DHrx"
 	"https://ibb.co.com/MWJQXQ7"
+    "https://ibb.co.com/sd5cS8w2"
 ];
 const SHOW_MS = 3000; // GIF কত মিলিসেকেন্ড দেখা যাবে
 const DATA_FILE = path.join(__dirname, "cache", "effectavatar.json");
