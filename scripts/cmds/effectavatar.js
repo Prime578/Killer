@@ -2,17 +2,18 @@ const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("path");
 
-// ====== আপনার ৪টা GIF (ibb পেজের লিংক চলবে, কোড নিজে সরাসরি ছবির লিংক বের করে নেবে) ======
+// ====== আপনার GIF-এর লিংক (ibb পেজের লিংক চলবে, কোড নিজে সরাসরি ছবির লিংক বের করে নেবে) ======
 // সরাসরি লিংক (i.ibb.co/...gif) থাকলে সেটা বসালে আরও নির্ভরযোগ্য হবে।
+// নতুন লিংক যোগ করলে প্রতিটার শেষে কমা (,) দেবেন, শুধু সবার শেষটায় লাগবে না।
 const GIF_LINKS = [
 	"https://ibb.co.com/hJ7fjFG4",
 	"https://ibb.co.com/KpGVks5K",
 	"https://ibb.co.com/Fkr4ffx4",
-	"https://ibb.co.com/qYz3DHrx"
-	"https://ibb.co.com/MWJQXQ7"
-    "https://ibb.co.com/sd5cS8w2"
-    "https://ibb.co.com/0VQKKf41"
-    "https://ibb.co.com/Jj9R4bvY"
+	"https://ibb.co.com/qYz3DHrx",
+	"https://ibb.co.com/MWJQXQ7",
+	"https://ibb.co.com/sd5cS8w2",
+	"https://ibb.co.com/0VQKKf41",
+	"https://ibb.co.com/Jj9R4bvY"
 ];
 const SHOW_MS = 3000; // GIF কত মিলিসেকেন্ড দেখা যাবে
 const DATA_FILE = path.join(__dirname, "cache", "effectavatar.json");
@@ -23,6 +24,10 @@ const lastReplay = {};
 const BUBBLE_MODE = true;        // false দিলে আগের মতো আলাদা GIF-পপআপ হবে
 const MAX_W = 640;               // ছবির সর্বোচ্চ প্রস্থ
 const GIF_H = 260;               // উপরের ক্যারেক্টারের উচ্চতা
+const OVERLAP = 18;              // ক্যারেক্টারের পা বাবলের মাথায় কতটা ঢুকবে (পিক্সেল)
+const CHAR_LEFT = 0.35;          // ক্যারেক্টার কোথায় বসবে: 0 = বাঁয়ে, 0.5 = মাঝে, 1 = ডানে
+const MAX_FRAMES = 60;           // GIF-এর ফ্রেম বেশি হলে এর বেশি নেবে না (বট ধীর হয় না)
+const CRACK_CHANCE = 0.4;        // বাবলে ফাটলের নকশা আসার সম্ভাবনা (0 = কখনো না, 1 = সবসময়)
 const PALETTE = [
 	["#ff6fa5", "#ff3d77"], // গোলাপি
 	["#4aa3ff", "#2f7bff"], // নীল
@@ -45,6 +50,42 @@ function getCanvas() {
 	return _canvas;
 }
 
+// একটা লেখাকে অক্ষর-অক্ষর ভাগ করে (ইমোজি/যুক্তাক্ষর না ভেঙে)
+function splitChars(str) {
+	try {
+		if (typeof Intl !== "undefined" && Intl.Segmenter) {
+			return Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(str), s => s.segment);
+		}
+	} catch (e) { }
+	return Array.from(str);
+}
+
+// ফাটলের মতো আঁকাবাঁকা সরু রেখা
+function drawCracks(ctx, w, h) {
+	ctx.strokeStyle = "rgba(0,0,0,0.22)";
+	ctx.lineWidth = 1.6;
+	ctx.lineCap = "round";
+	const n = 3 + Math.floor(Math.random() * 3);
+	for (let i = 0; i < n; i++) {
+		let x = Math.random() * w, y = Math.random() * h;
+		let ang = Math.random() * Math.PI * 2;
+		const segs = 5 + Math.floor(Math.random() * 5);
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		for (let k = 0; k < segs; k++) {
+			ang += (Math.random() - 0.5) * 1.2;
+			const len = 14 + Math.random() * 22;
+			x += Math.cos(ang) * len; y += Math.sin(ang) * len;
+			ctx.lineTo(x, y);
+			if (Math.random() < 0.25) { // ছোট শাখা
+				const bx = x + Math.cos(ang + 0.9) * 14, by = y + Math.sin(ang + 0.9) * 14;
+				ctx.moveTo(x, y); ctx.lineTo(bx, by); ctx.moveTo(x, y);
+			}
+		}
+		ctx.stroke();
+	}
+}
+
 // লেখা থেকে ঢেউ-কিনারার রঙিন বাবল PNG বানায়
 function renderBubble(text) {
 	const { createCanvas } = getCanvas();
@@ -58,7 +99,7 @@ function renderBubble(text) {
 	for (const raw of String(text).split("\n")) {
 		if (raw === "") { lines.push(""); continue; }
 		let cur = "";
-		for (const ch of Array.from(raw)) {
+		for (const ch of splitChars(raw)) {
 			if (probe.measureText(cur + ch).width > maxTextW) { lines.push(cur); cur = ch; }
 			else cur += ch;
 		}
@@ -94,13 +135,62 @@ function renderBubble(text) {
 	ctx.closePath();
 	ctx.fillStyle = grad; ctx.fill();
 
+	// চকচকে ভাব + (মাঝে মাঝে) ফাটলের নকশা, শুধু বাবলের ভেতরে
+	ctx.save();
+	ctx.clip();
+	const gloss = ctx.createLinearGradient(0, 0, 0, h * 0.55);
+	gloss.addColorStop(0, "rgba(255,255,255,0.40)");
+	gloss.addColorStop(1, "rgba(255,255,255,0)");
+	ctx.fillStyle = gloss; ctx.fillRect(0, 0, w, h * 0.55);
+	if (Math.random() < CRACK_CHANCE) drawCracks(ctx, w, h);
+	ctx.restore();
+
 	ctx.fillStyle = "#111111"; ctx.font = font; ctx.textBaseline = "top";
 	lines.forEach((l, i) => ctx.fillText(l, pad, pad + i * lineH));
 	return { png: canvas.toBuffer("image/png"), width: w, height: h };
 }
 
-// ক্যারেক্টার GIF-এর নিচে বাবল বসিয়ে একটা GIF বানায় (প্রতিটা ফ্রেমে)
-async function composeGif(gifBuf, bubble) {
+// ক্যারেক্টার বাবলের ওপর দাঁড়িয়ে আছে, পা সামান্য বাবলে ঢোকা (ভিডিওর মতো)।
+// ক্যারেক্টার বাবলের সামনে থাকে, প্রতিটা ফ্রেম আলাদা করে জোড়া লাগানো হয়।
+async function composeGifOverlap(gifBuf, bubble) {
+	const sharp = require("sharp");
+	const meta = await sharp(gifBuf, { animated: true }).metadata();
+	const pages = meta.pages || 1;
+	const frameH = meta.pageHeight || meta.height;
+	const W = Math.max(bubble.width, 360);
+	const H = GIF_H + bubble.height - OVERLAP;
+	const clear = { r: 0, g: 0, b: 0, alpha: 0 };
+	const cw = Math.min(W, Math.max(1, Math.round(GIF_H * meta.width / frameH)));
+	const rh = Math.max(1, Math.min(GIF_H, Math.round(cw * frameH / meta.width)));
+	const charLeft = Math.round((W - cw) * CHAR_LEFT);
+	const bubbleLeft = Math.round((W - bubble.width) / 2);
+
+	const base = await sharp({ create: { width: W, height: H, channels: 4, background: clear } })
+		.composite([{ input: bubble.png, top: GIF_H - OVERLAP, left: bubbleLeft }])
+		.png().toBuffer();
+
+	const step = Math.max(1, Math.ceil(pages / MAX_FRAMES));
+	const srcDelay = Array.isArray(meta.delay) && meta.delay.length ? meta.delay : [];
+	const raws = [], delay = [];
+	for (let i = 0; i < pages; i += step) {
+		const frame = await sharp(gifBuf, { page: i })
+			.resize({ width: cw, height: rh, fit: "fill" })
+			.ensureAlpha().png().toBuffer();
+		raws.push(await sharp(base)
+			.composite([{ input: frame, top: GIF_H - rh, left: charLeft }])
+			.png().toBuffer());
+		let d = 0;
+		for (let k = i; k < Math.min(pages, i + step); k++) d += (srcDelay[k] || 80);
+		delay.push(d);
+	}
+	if (raws.length === 1) return await sharp(raws[0]).gif().toBuffer();
+	return await sharp(raws, { join: { animated: true } })
+		.gif({ delay, loop: meta.loop === undefined ? 0 : meta.loop })
+		.toBuffer();
+}
+
+// আগের সরল পদ্ধতি (ওপরে ক্যারেক্টার, নিচে বাবল): নতুন পদ্ধতি না চললে এটা কাজে লাগে
+async function composeGifStacked(gifBuf, bubble) {
 	const sharp = require("sharp");
 	const meta = await sharp(gifBuf, { animated: true }).metadata();
 	const pages = meta.pages || 1;
@@ -118,6 +208,11 @@ async function composeGif(gifBuf, bubble) {
 		.toBuffer();
 }
 
+async function composeGif(gifBuf, bubble) {
+	try { return await composeGifOverlap(gifBuf, bubble); }
+	catch (e) { return await composeGifStacked(gifBuf, bubble); }
+}
+
 async function downloadGif() {
 	const link = GIF_LINKS[Math.floor(Math.random() * GIF_LINKS.length)];
 	const url = await resolveUrl(link);
@@ -132,7 +227,7 @@ function bufferStream(buf, name) {
 	return s;
 }
 
-// উত্তর দিলে true, কোনো কারণে না পারলে false (তখন সাধারণ লেখা যাবে)
+// উত্তর দিলে রেজাল্ট, কোনো কারণে না পারলে null (তখন সাধারণ লেখা যাবে)
 async function sendBubble(origReply, form, cb) {
 	const body = typeof form === "string" ? form : (form && form.body);
 	if (!body || typeof body !== "string" || body.length > 1500) return null;
@@ -237,15 +332,25 @@ function installAll() {
 	for (const name of loadList()) hook(name);
 }
 
+// শুধু বটের ওনার (config.json এর devUsers) চালাতে পারবে
+function isOwner(senderID) {
+	try {
+		const devs = (global.GoatBot.config.devUsers || []).map(String);
+		return devs.includes(String(senderID));
+	}
+	catch (e) { return false; }
+}
+
 module.exports = {
 	config: {
 		name: "effectavatar",
 		aliases: ["effavatar"],
-		version: "1.0",
+		version: "1.2",
 		author: "JABED",
 		countDown: 3,
-		role: { onStart: 2, onReaction: 0 },
-		description: { en: "Add a GIF popup effect (shown 3s) to chosen commands" },
+		// onStart: শুধু ওনার (role 4)। onChat/onReaction সবার জন্য খোলা, কারণ ওগুলো ভেতরের কাজ।
+		role: { onStart: 4, onChat: 0, onReaction: 0 },
+		description: { en: "Add a GIF popup effect (shown 3s) to chosen commands (owner only)" },
 		category: "owner",
 		guide: {
 			en: "   {pn} add <command>: effect চালু\n   {pn} remove <command>: effect বন্ধ\n   {pn} list: চালু থাকা কমান্ড"
@@ -261,7 +366,11 @@ module.exports = {
 		installAll();
 	},
 
-	onStart: async function ({ args, message }) {
+	onStart: async function ({ args, message, event }) {
+		// দ্বিতীয় নিরাপত্তা: ওনার ছাড়া কেউ চালাতে পারবে না
+		if (!isOwner(event && event.senderID))
+			return message.reply("⛔ এই কমান্ড শুধু বটের ওনার ব্যবহার করতে পারবেন।");
+
 		const sub = (args[0] || "").toLowerCase();
 		const list = loadList();
 
