@@ -1,6 +1,7 @@
 const { createCanvas, loadImage, registerFont } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
+const axios = require("axios");
 
 // ---------- settings ----------
 const TZ = "Asia/Dhaka"; // timezone used for the default clock
@@ -13,6 +14,13 @@ try {
 	registerFont(path.join(dir, "NotoSans-Regular.ttf"), { family: "Noto Sans" });
 	registerFont(path.join(dir, "NotoSans-Bold.ttf"), { family: "Noto Sans", weight: "bold" });
 } catch (e) { /* fall back to system fonts */ }
+try {
+	const dir = path.join(__dirname, "assets", "font");
+	const reg = path.join(dir, "NotoSansBengali-Regular.ttf");
+	const bold = path.join(dir, "NotoSansBengali-Bold.ttf");
+	if (fs.existsSync(reg)) registerFont(reg, { family: "Noto Sans Bengali" });
+	if (fs.existsSync(bold)) registerFont(bold, { family: "Noto Sans Bengali", weight: "bold" });
+} catch (e) { /* Bengali will need a system font */ }
 
 const THEMES = {
 	dark: { bg: "#000000", text: "#ffffff", sub: "#8a8d91", recv: "#303030", recvText: "#ffffff", quote: "#1f2021", quoteText: "#b0b3b8", input: "#262626", line: "#1c1c1c" },
@@ -74,6 +82,15 @@ function drawAvatar(ctx, img, cx, cy, r, bg) {
 	if (img) ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
 	else { ctx.fillStyle = "#8a8d91"; ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }
 	ctx.restore();
+}
+
+async function loadAvatar(url) {
+	try {
+		const r = await axios.get(url, { responseType: "arraybuffer", timeout: 8000 });
+		return await loadImage(Buffer.from(r.data));
+	} catch (e) {
+		return null; // gray circle is drawn instead
+	}
 }
 
 function statusBar(ctx, T, timeText) {
@@ -145,7 +162,8 @@ function helpText(prefix) {
 module.exports = {
 	config: {
 		name: "fakechat",
-		version: "2.1",
+		aliases: ["fakemsg", "fchat"],
+		version: "2.4",
 		author: "JABED",
 		countDown: 10,
 		role: 0,
@@ -163,7 +181,17 @@ module.exports = {
 		}
 	},
 
-	onStart: async function ({ message, event, args, usersData }) {
+	onStart: async function (payload) {
+		try {
+			return await module.exports._run(payload);
+		} catch (e) {
+			console.error("[fakechat]", e);
+			const where = String((e && e.stack) || "").split("\n").slice(1, 3).map(l => l.trim()).join("\n");
+			return payload.message.reply("❌ fakechat এরর: " + (e && e.message ? e.message : e) + (where ? "\n" + where : ""));
+		}
+	},
+
+	_run: async function ({ message, event, args, usersData }) {
 		const prefix = global.utils && global.utils.getPrefix ? global.utils.getPrefix(event.threadID) : "";
 		if (!args.length || ["help", "-h", "--help"].includes(args[0].toLowerCase()))
 			return message.reply(helpText(prefix));
@@ -191,10 +219,14 @@ module.exports = {
 
 		const people = [];
 		for (const id of ids) {
-			const name = await usersData.getName(id);
-			let img = null;
-			try { img = await loadImage(await usersData.getAvatarUrl(id)); } catch (e) { }
-			people.push({ id, name, img });
+			let name = null, img = null;
+			try {
+				if (usersData.refreshInfo && !(await usersData.getName(id)))
+					await usersData.refreshInfo(id);
+			} catch (e) { }
+			try { name = await usersData.getName(id); } catch (e) { }
+			try { img = await loadAvatar(await usersData.getAvatarUrl(id)); } catch (e) { }
+			people.push({ id, name: String(name || "Facebook User"), img });
 		}
 
 		// clock
@@ -377,3 +409,4 @@ module.exports = {
 		);
 	}
 };
+				
