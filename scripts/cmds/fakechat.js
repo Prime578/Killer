@@ -162,7 +162,7 @@ function helpText(prefix) {
 module.exports = {
 	config: {
 		name: "fakechat",
-		aliases: ["fakemsg", "fchat"],
+		aliases: ["fkmsg", "fkchat"],
 		version: "2.4",
 		author: "JABED",
 		countDown: 10,
