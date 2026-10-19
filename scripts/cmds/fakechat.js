@@ -93,37 +93,88 @@ async function loadAvatar(url) {
 	}
 }
 
-function statusBar(ctx, T, timeText) {
+const CARRIERS = {
+	gp: "Grameenphone", grameenphone: "Grameenphone", robi: "Robi", bl: "Banglalink",
+	banglalink: "Banglalink", airtel: "Airtel", tt: "Teletalk", teletalk: "Teletalk", none: "No SIM"
+};
+const SHORT = { Grameenphone: "GP", Banglalink: "BL" };
+
+function statusBar(ctx, T, st) {
 	ctx.textBaseline = "middle";
 	ctx.textAlign = "left";
+
+	// left: time + AM/PM + carrier name(s)
 	ctx.fillStyle = T.text;
 	ctx.font = `bold 15px ${FONT}`;
-	ctx.fillText(timeText, 26, 24);
-	// signal bars
-	for (let i = 0; i < 4; i++) {
-		ctx.fillStyle = T.text;
-		rrc(ctx, W - 108 + i * 6, 30 - (4 + i * 2), 4, 4 + i * 2, [1, 1, 1, 1]);
-		ctx.fill();
-	}
-	// wifi
-	ctx.strokeStyle = T.text;
-	ctx.lineWidth = 2;
-	ctx.lineCap = "round";
-	for (const r of [10, 6.5, 3]) {
-		ctx.beginPath();
-		ctx.arc(W - 72, 31, r, Math.PI * 1.25, Math.PI * 1.75);
-		ctx.stroke();
-	}
-	// battery
+	ctx.fillText(st.time, 22, 24);
+	let lx = 22 + ctx.measureText(st.time).width + 3;
+	ctx.font = `10px ${FONT}`;
+	ctx.fillText(st.ampm, lx, 25);
+	lx += ctx.measureText(st.ampm).width + 9;
+	ctx.fillStyle = T.sub;
+	ctx.font = `11px ${FONT}`;
+	const names = st.sims.map(n => (st.sims.length > 1 ? SHORT[n] || n : n));
+	ctx.fillText(names.join(" | "), lx, 25);
+
+	// right side, laid out from the edge towards the left
+	let cur = W - 14;
+	const pct = st.battery;
+	const bx = cur - 24;
 	ctx.lineWidth = 1;
 	ctx.strokeStyle = T.sub;
-	rrc(ctx, W - 50, 18, 26, 13, [4, 4, 4, 4]);
+	rrc(ctx, bx, 18, 24, 12, [3.5, 3.5, 3.5, 3.5]);
 	ctx.stroke();
-	ctx.fillStyle = T.text;
-	rrc(ctx, W - 48, 20, 19, 9, [2.5, 2.5, 2.5, 2.5]);
-	ctx.fill();
 	ctx.fillStyle = T.sub;
-	ctx.fillRect(W - 23, 22.5, 2, 4);
+	ctx.fillRect(bx + 24.5, 21.5, 2, 5);
+	ctx.fillStyle = st.charging ? "#31c75a" : pct <= 15 ? "#ff3b30" : T.text;
+	rrc(ctx, bx + 2, 20, Math.max(2, 20 * pct / 100), 8, [2, 2, 2, 2]);
+	ctx.fill();
+	if (st.charging) {
+		ctx.fillStyle = T.bg;
+		ctx.beginPath();
+		ctx.moveTo(bx + 13.5, 19.5); ctx.lineTo(bx + 8.5, 25.2); ctx.lineTo(bx + 11.8, 25.2);
+		ctx.lineTo(bx + 10.5, 29.5); ctx.lineTo(bx + 15.8, 23.5); ctx.lineTo(bx + 12.6, 23.5);
+		ctx.closePath();
+		ctx.fill();
+	}
+	cur = bx - 4;
+	ctx.textAlign = "right";
+	ctx.fillStyle = T.text;
+	ctx.font = `12px ${FONT}`;
+	const ptxt = pct + "%";
+	ctx.fillText(ptxt, cur, 25);
+	cur -= ctx.measureText(ptxt).width + 8;
+
+	// network: wifi arcs or 4G/5G label
+	if (st.net === "wifi") {
+		ctx.strokeStyle = T.text; ctx.lineWidth = 2; ctx.lineCap = "round";
+		for (const r of [10, 6.5, 3]) {
+			ctx.beginPath();
+			ctx.arc(cur - 11, 31, r, Math.PI * 1.25, Math.PI * 1.75);
+			ctx.stroke();
+		}
+		cur -= 26;
+	} else {
+		ctx.font = `bold 11px ${FONT}`;
+		ctx.fillStyle = T.text;
+		ctx.fillText(st.net, cur, 25);
+		cur -= ctx.measureText(st.net).width + 8;
+	}
+
+	// signal bars, one set per SIM
+	for (let i = st.sims.length - 1; i >= 0; i--) {
+		const level = st.sims[i] === "No SIM" ? 0 : st.bars[i];
+		const x0 = cur - 18;
+		for (let k = 0; k < 4; k++) {
+			ctx.fillStyle = k < level ? T.text : T.sub;
+			ctx.globalAlpha = k < level ? 1 : 0.35;
+			rrc(ctx, x0 + k * 5, 31 - (4 + k * 2.5), 3.4, 4 + k * 2.5, [1, 1, 1, 1]);
+			ctx.fill();
+		}
+		ctx.globalAlpha = 1;
+		cur = x0 - 6;
+	}
+	ctx.textAlign = "left";
 }
 
 function helpText(prefix) {
@@ -144,7 +195,11 @@ function helpText(prefix) {
 		"▫️ অপশন (প্রথম | এর আগে):",
 		"-light    → লাইট মোড (ডিফল্ট ডার্ক)",
 		"-typing   → টাইপিং বাবল দেখাবে",
-		"-time=10:42 → ঘড়ির সময় ঠিক করে দেবে",
+		"-time=10:42pm → ঘড়ির সময় ঠিক করে দেবে (না দিলে লাইভ সময়)",
+		"-battery=45 → ব্যাটারি চার্জ (না দিলে র‍্যান্ডম)",
+		"-charging → চার্জে আছে (সবুজ + বিদ্যুৎ চিহ্ন)",
+		"-sim=gp / -sim=gp,robi → সিম (gp, robi, bl, airtel, tt, none)",
+		"-net=wifi / 4g / 5g → নেটওয়ার্ক চিহ্ন (ডিফল্ট 4G)",
 		"",
 		"▫️ মেসেজ স্টাইল:",
 		"3: হাই    → ৩য় ব্যক্তির মেসেজ (গ্রুপ, সর্বোচ্চ ৪ জন)",
@@ -162,8 +217,8 @@ function helpText(prefix) {
 module.exports = {
 	config: {
 		name: "fakechat",
-		aliases: ["fkmsg", "fkchat"],
-		version: "2.4",
+		aliases: ["fakemsg", "fchat"],
+		version: "3.0",
 		author: "JABED",
 		countDown: 10,
 		role: 0,
@@ -172,7 +227,7 @@ module.exports = {
 		guide: {
 			en: "{pn} help   (full guide)\n{pn} @user1 @user2 | hello | hi | how are you"
 				+ "\n{pn} <uid1> <uid2> | hello | hi   (or reply to someone's message: {pn} | hello | hi)"
-				+ "\n\nOptions (before the first |): -light  -typing  -time=10:42"
+				+ "\n\nOptions (before the first |): -light  -typing  -charging  -time=10:42pm  -battery=45  -sim=gp,robi  -net=wifi|4g|5g"
 				+ "\nPer message:"
 				+ "\n  3: text          send as 3rd person (group chat, up to 4 people)"
 				+ "\n  text {❤️}        add a reaction"
@@ -203,8 +258,21 @@ module.exports = {
 		// options
 		const T = /(?:^|\s)-light\b/i.test(head) ? THEMES.light : THEMES.dark;
 		const typing = /(?:^|\s)-typing\b/i.test(head);
-		const tm = head.match(/(?:^|\s)-time=(\d{1,2}):(\d{2})/i);
-		head = head.replace(/(?:^|\s)-(light|dark|typing)\b/gi, " ").replace(/(?:^|\s)-time=\S+/i, " ");
+		const charging = /(?:^|\s)-charging\b/i.test(head);
+		const tm = head.match(/(?:^|\s)-time=(\d{1,2}):(\d{2})(am|pm)?/i);
+		const bm = head.match(/(?:^|\s)-battery=(\d{1,3})/i);
+		const sm = head.match(/(?:^|\s)-sim=(\S+)/i);
+		const nm = head.match(/(?:^|\s)-net=(wifi|5g|4g|3g|2g|h\+?|e)\b/i);
+		head = head
+			.replace(/(?:^|\s)-(light|dark|typing|charging)\b/gi, " ")
+			.replace(/(?:^|\s)-(time|battery|sim|net)=\S+/gi, " ");
+
+		const battery = bm ? Math.min(100, Math.max(1, +bm[1])) : 25 + Math.floor(Math.random() * 71);
+		const sims = sm
+			? sm[1].split(",").slice(0, 2).map(k => CARRIERS[k.toLowerCase()] || k.replace(/_/g, " "))
+			: [["Grameenphone", "Robi", "Banglalink"][Math.floor(Math.random() * 3)]];
+		const bars = sims.map(() => 3 + Math.floor(Math.random() * 2));
+		const net = nm ? (nm[1].toLowerCase() === "wifi" ? "wifi" : nm[1].toUpperCase()) : "4G";
 
 		// people: replied user, tags, typed UIDs
 		const found = [];
@@ -229,15 +297,23 @@ module.exports = {
 			people.push({ id, name: String(name || "Facebook User"), img });
 		}
 
-		// clock
-		let clock;
+		// clock (live time in TZ unless -time= is given; -time=10:42pm or 22:42)
+		let h24, mm;
 		if (tm && +tm[1] <= 23 && +tm[2] <= 59) {
-			const h = +tm[1];
-			clock = `${((h + 11) % 12) + 1}:${tm[2]} ${h >= 12 ? "PM" : "AM"}`;
+			h24 = +tm[1]; mm = tm[2];
+			const ap = (tm[3] || "").toLowerCase();
+			if (ap === "pm" && h24 < 12) h24 += 12;
+			if (ap === "am" && h24 === 12) h24 = 0;
 		} else {
-			clock = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TZ });
+			const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false })
+				.formatToParts(new Date());
+			h24 = +parts.find(p => p.type === "hour").value % 24;
+			mm = parts.find(p => p.type === "minute").value;
 		}
-		const statusTime = clock.replace(/\s?[AP]M/i, "");
+		const ampm = h24 >= 12 ? "PM" : "AM";
+		const statusTime = `${((h24 + 11) % 12) + 1}:${mm}`;
+		const clock = `${statusTime} ${ampm}`;
+		const st = { time: statusTime, ampm, sims, bars, net, battery, charging };
 
 		// parse messages
 		let prev = null;
@@ -289,7 +365,7 @@ module.exports = {
 		ctx.fillRect(0, 0, W, H);
 		ctx.textBaseline = "middle";
 
-		statusBar(ctx, T, statusTime);
+		statusBar(ctx, T, st);
 
 		// header
 		ctx.strokeStyle = BLUE;
@@ -409,4 +485,3 @@ module.exports = {
 		);
 	}
 };
-				
