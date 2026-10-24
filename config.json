@@ -28,14 +28,12 @@
   "premiumUsers": [
     "100082814982394",
     "100059794962025",
-    "61591169410501",
-    "61593170616736"
+    "61591169410501"
   ],
   "devUsers": [
     "100059794962025",
     "61576355017916",
-    "61591169410501",
-    "61593170616736"
+    "61591169410501"    
   ],
   "notes_premiumUsers": "List of user IDs with premium access (role 3)",
   "notes_devUsers": "List of developer IDs with full access (role 4)",
