@@ -221,11 +221,50 @@ async function composeGif(gifBuf, bubble) {
 	catch (e) { return await composeGifStacked(gifBuf, bubble); }
 }
 
-async function downloadGif() {
-	const link = GIF_LINKS[Math.floor(Math.random() * GIF_LINKS.length)];
-	const url = await resolveUrl(link);
-	const res = await axios.get(url, { responseType: "arraybuffer", timeout: 20000 });
-	return Buffer.from(res.data);
+// ====== GIF ডাউনলোড: মেমরি + ডিস্কে জমিয়ে রাখে, একটা ব্যর্থ হলে আরেকটা চেষ্টা করে ======
+const GIF_DIR = path.join(__dirname, "cache", "effectavatar_gifs");
+const gifBufCache = {};
+
+function linkKey(link) { return Buffer.from(link).toString("hex").slice(-24); }
+
+async function fetchGifBuffer(link) {
+	if (gifBufCache[link]) return gifBufCache[link];
+	const file = path.join(GIF_DIR, linkKey(link) + ".gif");
+	try {
+		if (fs.existsSync(file)) {
+			const b = fs.readFileSync(file);
+			if (b && b.length > 100) { gifBufCache[link] = b; return b; }
+		}
+	} catch (e) { }
+	let lastErr;
+	for (let t = 0; t < 2; t++) { // প্রতি লিংকে ২ বার চেষ্টা
+		try {
+			delete urlCache[link];
+			const url = await resolveUrl(link);
+			const res = await axios.get(url, { responseType: "arraybuffer", timeout: 20000, headers: { "User-Agent": "Mozilla/5.0" } });
+			const b = Buffer.from(res.data);
+			if (b.length < 100) throw new Error("empty image");
+			gifBufCache[link] = b;
+			try { fs.ensureDirSync(GIF_DIR); fs.writeFileSync(file, b); } catch (e) { }
+			return b;
+		}
+		catch (e) { lastErr = e; }
+	}
+	throw lastErr;
+}
+
+// লিংকগুলো এলোমেলো ক্রমে সাজায়, যেগুলো আগে থেকেই জমানো আছে সেগুলো আগে
+function orderedLinks() {
+	const arr = GIF_LINKS.slice().sort(() => Math.random() - 0.5);
+	return arr.sort((a, b) => (gifBufCache[b] ? 1 : 0) - (gifBufCache[a] ? 1 : 0) + (Math.random() - 0.5) * 0.01);
+}
+
+// পিছনে চুপচাপ সব GIF নামিয়ে রাখে, যাতে পরে আর দেরি/ব্যর্থতা না হয়
+async function warmGifs() {
+	for (const link of GIF_LINKS) {
+		try { await fetchGifBuffer(link); }
+		catch (e) { console.error("[effectavatar] GIF preload failed:", link, e && e.message); }
+	}
 }
 
 function bufferStream(buf, name) {
@@ -240,13 +279,26 @@ async function sendBubble(origReply, form, cb) {
 	const body = typeof form === "string" ? form : (form && form.body);
 	if (!body || typeof body !== "string" || body.length > 1500) return null;
 	if (typeof form === "object" && (form.attachment || form.mentions || form.sticker || form.url || form.location)) return null;
-	try {
-		const bubble = renderBubble(body);
-		const gifBuf = await downloadGif();
-		const out = await composeGif(gifBuf, bubble);
-		return await origReply({ attachment: bufferStream(out, "effect.gif") }, cb);
+
+	let bubble;
+	try { bubble = renderBubble(body); }
+	catch (e) { console.error("[effectavatar] bubble render failed:", e && e.message); return null; }
+
+	// একটা GIF ব্যর্থ হলে পরেরটা, সর্বোচ্চ ৪টা পর্যন্ত চেষ্টা
+	const links = orderedLinks().slice(0, 4);
+	let out = null;
+	for (const link of links) {
+		try {
+			const gifBuf = await fetchGifBuffer(link);
+			out = await composeGif(gifBuf, bubble);
+			if (out) break;
+		}
+		catch (e) { console.error("[effectavatar] GIF failed, trying next:", link, e && e.message); }
 	}
-	catch (e) { return null; }
+	if (!out) return null;
+
+	try { return await origReply({ attachment: bufferStream(out, "effect.gif") }, cb); }
+	catch (e) { console.error("[effectavatar] send failed:", e && e.message); return null; }
 }
 
 // ====== ডেটা ফাইল: effect-ওয়ালা কমান্ড + এক্সট্রা ইউজার (UID) ======
@@ -374,7 +426,7 @@ module.exports = {
 	config: {
 		name: "effectavatar",
 		aliases: ["effavatar"],
-		version: "1.3",
+		version: "1.4",
 		author: "JABED",
 		countDown: 3,
 		// অনুমতি-চেক নিচে কোডের ভেতরেই হয় (মেইন এডমিন + এক্সট্রা ইউজার), তাই এখানে onStart: 0
@@ -395,6 +447,7 @@ module.exports = {
 	onLoad: function () {
 		// অন্য কমান্ড লোড হওয়ার পর হুক বসাতে একটু দেরি
 		setTimeout(installAll, 10000);
+		setTimeout(() => { warmGifs().catch(() => { }); }, 15000);
 	},
 
 	onChat: function () {
@@ -490,4 +543,4 @@ module.exports = {
 		await showGif(api, event.threadID);
 	}
 };
-					 
+		
