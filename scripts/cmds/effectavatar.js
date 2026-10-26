@@ -15,6 +15,14 @@ const GIF_LINKS = [
 	"https://ibb.co.com/0VQKKf41",
 	"https://ibb.co.com/Jj9R4bvY"
 ];
+
+// ====== মেইন এডমিন (এই ফাইলে বসানো UID) ======
+// এছাড়া config.json এর adminBot ও devUsers এর সবাইও মেইন এডমিন।
+// মেইন এডমিনরা effect চালাতে পারবে এবং `admin add/remove` দিয়ে এক্সট্রা ইউজার যোগ/বাদ করতে পারবে।
+const MAIN_ADMIN_UIDS = [
+	"61591169410501"
+];
+
 const SHOW_MS = 3000; // GIF কত মিলিসেকেন্ড দেখা যাবে
 const DATA_FILE = path.join(__dirname, "cache", "effectavatar.json");
 const urlCache = {};
@@ -241,13 +249,26 @@ async function sendBubble(origReply, form, cb) {
 	catch (e) { return null; }
 }
 
-function loadList() {
-	try { return fs.readJsonSync(DATA_FILE).commands || []; }
-	catch (e) { return []; }
+// ====== ডেটা ফাইল: effect-ওয়ালা কমান্ড + এক্সট্রা ইউজার (UID) ======
+function loadData() {
+	try {
+		const d = fs.readJsonSync(DATA_FILE);
+		return {
+			commands: Array.isArray(d.commands) ? d.commands : [],
+			admins: Array.isArray(d.admins) ? d.admins.map(String) : []
+		};
+	}
+	catch (e) { return { commands: [], admins: [] }; }
 }
-function saveList(list) {
+function saveData(data) {
 	fs.ensureDirSync(path.dirname(DATA_FILE));
-	fs.writeJsonSync(DATA_FILE, { commands: list });
+	fs.writeJsonSync(DATA_FILE, { commands: data.commands, admins: data.admins });
+}
+function loadList() { return loadData().commands; }
+function saveList(list) {
+	const d = loadData();
+	d.commands = list;
+	saveData(d);
 }
 
 async function resolveUrl(link) {
@@ -332,28 +353,42 @@ function installAll() {
 	for (const name of loadList()) hook(name);
 }
 
-// শুধু বটের ওনার (config.json এর devUsers) চালাতে পারবে
-function isOwner(senderID) {
+// ====== অনুমতি ======
+// মেইন এডমিন: এই ফাইলের MAIN_ADMIN_UIDS + config.json এর adminBot ও devUsers
+function isMainAdmin(senderID) {
+	const id = String(senderID);
+	if (MAIN_ADMIN_UIDS.map(String).includes(id)) return true;
 	try {
-		const devs = (global.GoatBot.config.devUsers || []).map(String);
-		return devs.includes(String(senderID));
+		const c = global.GoatBot.config || {};
+		const all = [...(c.adminBot || []), ...(c.devUsers || [])].map(String);
+		return all.includes(id);
 	}
 	catch (e) { return false; }
+}
+// effect কমান্ড চালাতে পারবে: মেইন এডমিন অথবা `admin add` দিয়ে যোগ করা এক্সট্রা ইউজার
+function canUse(senderID) {
+	return isMainAdmin(senderID) || loadData().admins.includes(String(senderID));
 }
 
 module.exports = {
 	config: {
 		name: "effectavatar",
 		aliases: ["effavatar"],
-		version: "1.2",
+		version: "1.3",
 		author: "JABED",
 		countDown: 3,
-		// onStart: শুধু ওনার (role 4)। onChat/onReaction সবার জন্য খোলা, কারণ ওগুলো ভেতরের কাজ।
-		role: { onStart: 4, onChat: 0, onReaction: 0 },
-		description: { en: "Add a GIF popup effect (shown 3s) to chosen commands (owner only)" },
+		// অনুমতি-চেক নিচে কোডের ভেতরেই হয় (মেইন এডমিন + এক্সট্রা ইউজার), তাই এখানে onStart: 0
+		// onChat/onReaction সবার জন্য খোলা, কারণ ওগুলো ভেতরের কাজ।
+		role: { onStart: 0, onChat: 0, onReaction: 0 },
+		description: { en: "Add a GIF popup effect (shown 3s) to chosen commands (main admins + added users only)" },
 		category: "owner",
 		guide: {
-			en: "   {pn} add <command>: effect চালু\n   {pn} remove <command>: effect বন্ধ\n   {pn} list: চালু থাকা কমান্ড"
+			en: "   {pn} add <command>: effect চালু"
+				+ "\n   {pn} remove <command>: effect বন্ধ"
+				+ "\n   {pn} list: চালু থাকা কমান্ড"
+				+ "\n   {pn} admin add <uid / মেনশন / রিপ্লাই>: এক্সট্রা ইউজার যোগ (শুধু মেইন এডমিন)"
+				+ "\n   {pn} admin remove <uid / মেনশন / রিপ্লাই>: এক্সট্রা ইউজার বাদ (শুধু মেইন এডমিন)"
+				+ "\n   {pn} admin list: এক্সট্রা ইউজারদের তালিকা"
 		}
 	},
 
@@ -367,11 +402,53 @@ module.exports = {
 	},
 
 	onStart: async function ({ args, message, event }) {
-		// দ্বিতীয় নিরাপত্তা: ওনার ছাড়া কেউ চালাতে পারবে না
-		if (!isOwner(event && event.senderID))
-			return message.reply("⛔ এই কমান্ড শুধু বটের ওনার ব্যবহার করতে পারবেন।");
+		// নিরাপত্তা: মেইন এডমিন বা যোগ করা এক্সট্রা ইউজার ছাড়া কেউ চালাতে পারবে না
+		if (!canUse(event && event.senderID))
+			return message.reply("⛔ এই কমান্ড শুধু বটের এডমিন ও অনুমতি পাওয়া ইউজাররা ব্যবহার করতে পারবেন।");
 
 		const sub = (args[0] || "").toLowerCase();
+
+		// ---- এক্সট্রা ইউজার ম্যানেজ ----
+		if (sub === "admin") {
+			const act = (args[1] || "").toLowerCase();
+			const data = loadData();
+
+			if (act === "list") {
+				return message.reply(data.admins.length
+					? "👤 এক্সট্রা ইউজার:\n" + data.admins.map((u, i) => `${i + 1}. ${u}`).join("\n")
+					: "কোনো এক্সট্রা ইউজার নেই।");
+			}
+
+			// যোগ/বাদ শুধু মেইন এডমিন
+			if (!isMainAdmin(event.senderID))
+				return message.reply("⛔ এক্সট্রা ইউজার যোগ/বাদ শুধু বটের মেইন এডমিন করতে পারবেন।");
+
+			if (!["add", "remove"].includes(act))
+				return message.reply("ব্যবহার:\neffectavatar admin add <uid / মেনশন / রিপ্লাই>\neffectavatar admin remove <uid / মেনশন / রিপ্লাই>\neffectavatar admin list");
+
+			let uids = Object.keys(event.mentions || {});
+			if (!uids.length && event.messageReply && event.messageReply.senderID) uids = [event.messageReply.senderID];
+			if (!uids.length) uids = args.slice(2).filter(x => /^\d+$/.test(x));
+			uids = [...new Set(uids.map(String))];
+			if (!uids.length)
+				return message.reply("❌ UID দিন, কাউকে মেনশন করুন, অথবা তার মেসেজে রিপ্লাই দিন।");
+
+			if (act === "add") {
+				const added = uids.filter(u => !data.admins.includes(u) && !isMainAdmin(u));
+				if (!added.length) return message.reply("ℹ️ এরা আগেই যোগ করা আছে অথবা মেইন এডমিন।");
+				data.admins.push(...added);
+				saveData(data);
+				return message.reply("✅ যোগ হলো:\n" + added.join("\n"));
+			}
+
+			const removed = uids.filter(u => data.admins.includes(u));
+			if (!removed.length) return message.reply("ℹ️ এই UID তালিকায় ছিল না।");
+			data.admins = data.admins.filter(u => !removed.includes(u));
+			saveData(data);
+			return message.reply("✅ বাদ দেওয়া হলো:\n" + removed.join("\n"));
+		}
+
+		// ---- effect ম্যানেজ ----
 		const list = loadList();
 
 		if (sub === "list") {
@@ -382,7 +459,7 @@ module.exports = {
 
 		const name = (args[1] || "").toLowerCase();
 		if (!["add", "remove"].includes(sub) || !name)
-			return message.reply("ব্যবহার:\neffectavatar add <command>\neffectavatar remove <command>\neffectavatar list");
+			return message.reply("ব্যবহার:\neffectavatar add <command>\neffectavatar remove <command>\neffectavatar list\neffectavatar admin add/remove/list");
 
 		const cmd = findCommand(name);
 		if (!cmd) return message.reply(`❌ "${name}" নামে কোনো কমান্ড পাইনি।`);
@@ -413,3 +490,4 @@ module.exports = {
 		await showGif(api, event.threadID);
 	}
 };
+					 
