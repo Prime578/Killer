@@ -1,5 +1,3 @@
-"use strict";
-
 process.stdout.write("\x1b]2;LOGIN.JS - by xalman\x1b\x5c");
 
 const defaultRequire = require;
