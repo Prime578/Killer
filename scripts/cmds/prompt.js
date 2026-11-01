@@ -8,7 +8,7 @@ module.exports = {
     aliases: ["p"],
     version: "0.0.1",
     role: 0,
-    author: "ArYAN",
+    author: "JABED VAO",
     category: "ai",
     cooldowns: 5,
     guide: { en: "Reply to an image to generate Midjourney prompt" }
