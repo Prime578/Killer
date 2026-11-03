@@ -1,1 +1,82 @@
-const axios = require('axios'); const fs = require('fs'); const path = require('path'); const os = require('os'); async function getStreamFromURL(url) { const response = await axios.get(url, { responseType: 'stream' }); return response.data; } async function fetchTikTokVideos(query) { try { const response = await axios.get(`https://lyric-search-neon.vercel.app/kshitiz?keyword=${query}`); return response.data; } catch (error) { console.error(error); return null; } } module.exports = { config: { name: "anisearch", aliases: [], author: "Vex_kshitiz", version: "1.0", shortDescription: { en: "get anime edit", }, longDescription: { en: "search for anime edits video", }, category: "fun", guide: { en: "{p}{n} [query]", }, }, onStart: async function ({ api, event, args }) { api.setMessageReaction("✨", event.messageID, (err) => {}, true); const query = args.join(' '); const modifiedQuery = `${query} anime edit`; const videos = await fetchTikTokVideos(modifiedQuery); if (!videos || videos.length === 0) { api.sendMessage({ body: `${query} not found.` }, event.threadID, event.messageID); return; } const selectedVideo = videos[Math.floor(Math.random() * videos.length)]; const videoUrl = selectedVideo.videoUrl; if (!videoUrl) { api.sendMessage({ body: 'Error: Video not found.' }, event.threadID, event.messageID); return; } try { const videoStream = await getStreamFromURL(videoUrl); await api.sendMessage({ body: ``, attachment: videoStream, }, event.threadID, event.messageID); } catch (error) { console.error(error); api.sendMessage({ body: 'An error occurred while processing the video.\nPlease try again later.' }, event.threadID, event.messageID); } }, };
+const axios = require("axios");
+
+module.exports = {
+  config: {
+    name: "amv",
+    version: "1.0",
+    author: "Siam Ahmed Saan",
+    countDown: 5,
+    role: 0,
+    shortDescription: {
+      en: "Search Anime AMV"
+    },
+    longDescription: {
+      en: "Search and send Anime AMV videos."
+    },
+    category: "media",
+    guide: {
+      en: "{pn} [keyword]\nExample:\n{pn}\n{pn} zoro"
+    }
+  },
+
+  onStart: async function ({ api, event, args, message }) {
+    let keyword = args.join(" ").trim();
+
+    if (!keyword) keyword = "amv";
+
+    // reaction while starting
+    api.setMessageReaction("🎀", event.messageID, () => {}, true);
+
+    const searching = await message.reply(
+`🔎 Searching...
+Please wait...`
+    );
+
+    try {
+      const { data } = await axios.get(
+        `https://toshiro-api-editz6t9.vercel.app/api/search/amv?keyword=${encodeURIComponent(keyword)}`
+      );
+
+      if (!data.success || !data.result) {
+        api.setMessageReaction("❌", event.messageID, () => {}, true);
+        await message.unsend(searching.messageID);
+        return message.reply("❌ | No AMV found.");
+      }
+
+      const info = data.result;
+
+      await message.unsend(searching.messageID);
+
+      // done reaction
+      api.setMessageReaction("✅", event.messageID, () => {}, true);
+
+      return api.sendMessage(
+        {
+          body:
+`╭━〔 🎬 Anime AMV 〕━╮
+🎥 Title: ${info.title}
+📦 Size: ${info.size}
+🔎 Search: ${data.keyword}
+━━━━━━━━━━━━━━
+🎥 Here your's video 
+😈 Owner : JABED VAO 
+╰━━━━━━━━━━━━━━╯`,
+          attachment: await global.utils.getStreamFromURL(info.download)
+        },
+        event.threadID,
+        event.messageID
+      );
+
+    } catch (err) {
+      console.error(err);
+
+      api.setMessageReaction("❌", event.messageID, () => {}, true);
+
+      if (searching?.messageID) {
+        await message.unsend(searching.messageID).catch(() => {});
+      }
+
+      return message.reply("❌ | Failed to fetch AMV. Try again later.");
+    }
+  }
+};
