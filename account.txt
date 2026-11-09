@@ -153,6 +153,4 @@
         "secure": true,
         "session": false,
         "storeId": null,
-        "value": "v2%3Bclient_version%3A3346%3Btimestamp%3A1793724884"
-    }
-]
+        "value": "v2%3Bclient_version%3A3346
